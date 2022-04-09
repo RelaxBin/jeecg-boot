@@ -25,7 +25,6 @@
     props: {
       dictCode: String,
       placeholder: String,
-      triggerChange: Boolean,
       disabled: Boolean,
       value: [String, Number],
       type: String,
@@ -82,19 +81,17 @@
           }
         })
       },
-      handleInput(e) {
+      handleInput(e='') {
         let val;
-        if(this.tagType=="radio"){
+        if(Object.keys(e).includes('target')){
           val = e.target.value
         }else{
           val = e
         }
         console.log(val);
-        if(this.triggerChange){
-          this.$emit('change', val);
-        }else{
-          this.$emit('input', val);
-        }
+        this.$emit('change', val);
+        //LOWCOD-2146 【菜单】数据规则，选择自定义SQL 规则值无法输入空格
+        this.$emit('input', val);
       },
       setCurrentDictOptions(dictOptions){
         this.dictOptions = dictOptions
@@ -102,6 +99,10 @@
       getCurrentDictOptions(){
         return this.dictOptions
       }
+    },
+    model:{
+      prop: 'value',
+      event: 'change'
     }
   }
 </script>

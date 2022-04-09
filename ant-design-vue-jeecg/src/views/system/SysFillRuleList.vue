@@ -3,17 +3,17 @@
 
     <!-- 查询区域 -->
     <div class="table-page-search-wrapper">
-      <a-form layout="inline" @keyup.enter.native="searchQuery">
+      <a-form-model layout="inline" :model="queryParam" @keyup.enter.native="searchQuery">
         <a-row :gutter="24">
           <a-col :md="6" :sm="8">
-            <a-form-item label="规则名称">
+            <a-form-model-item label="规则名称" prop="ruleName">
               <a-input placeholder="请输入规则名称" v-model="queryParam.ruleName"></a-input>
-            </a-form-item>
+            </a-form-model-item>
           </a-col>
           <a-col :md="6" :sm="8">
-            <a-form-item label="规则Code">
+            <a-form-model-item label="规则Code" prop="ruleCode">
               <a-input placeholder="请输入规则Code" v-model="queryParam.ruleCode"></a-input>
-            </a-form-item>
+            </a-form-model-item>
           </a-col>
           <a-col :md="6" :sm="8">
             <span style="float: left;overflow: hidden;" class="table-page-search-submitButtons">
@@ -22,7 +22,7 @@
             </span>
           </a-col>
         </a-row>
-      </a-form>
+      </a-form-model>
     </div>
 
     <!-- 操作按钮区域 -->
@@ -69,7 +69,12 @@
       :loading="loading"
       :rowSelection="{selectedRowKeys: selectedRowKeys, onChange: onSelectChange}"
       @change="handleTableChange">
-
+        <template slot="ruleClassText" slot-scope="text">
+          <j-ellipsis :value="text" :length="30"></j-ellipsis>
+        </template>
+        <template slot="ruleParamsText" slot-scope="text,record">
+          <j-ellipsis :value="text" :length="30"></j-ellipsis>
+        </template>
         <span slot="action" slot-scope="text, record">
           <a @click="handleEdit(record)">编辑</a>
           <a-divider type="vertical"/>
@@ -131,12 +136,14 @@
           {
             title: '规则实现类',
             align: 'center',
-            dataIndex: 'ruleClass'
+            dataIndex: 'ruleClass',
+            scopedSlots: {customRender: "ruleClassText"}
           },
           {
             title: '规则参数',
             align: 'center',
-            dataIndex: 'ruleParams'
+            dataIndex: 'ruleParams',
+            scopedSlots: {customRender: "ruleParamsText"}
           },
           {
             title: '操作',

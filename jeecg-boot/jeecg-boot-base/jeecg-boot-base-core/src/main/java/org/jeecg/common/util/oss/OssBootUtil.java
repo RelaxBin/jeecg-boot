@@ -9,6 +9,7 @@ import com.aliyun.oss.model.PutObjectResult;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tomcat.util.http.fileupload.FileItemStream;
 import org.jeecg.common.util.CommonUtils;
+import org.jeecg.common.util.filter.FileTypeFilter;
 import org.jeecg.common.util.filter.StrAttackFilter;
 import org.jeecg.common.util.oConvertUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -110,8 +111,13 @@ public class OssBootUtil {
             if("" == orgName){
               orgName=file.getName();
             }
+            //update-begin-author:liusq date:20210809 for: 过滤上传文件类型
+            FileTypeFilter.fileTypeFilter(file);
+            //update-end-author:liusq date:20210809 for: 过滤上传文件类型
             orgName = CommonUtils.getFileName(orgName);
-            String fileName = orgName.substring(0, orgName.lastIndexOf(".")) + "_" + System.currentTimeMillis() + orgName.substring(orgName.lastIndexOf("."));
+            String fileName = orgName.indexOf(".")==-1
+                              ?orgName + "_" + System.currentTimeMillis()
+                              :orgName.substring(0, orgName.lastIndexOf(".")) + "_" + System.currentTimeMillis() + orgName.substring(orgName.lastIndexOf("."));
             if (!fileDir.endsWith("/")) {
                 fileDir = fileDir.concat("/");
             }
@@ -134,6 +140,9 @@ public class OssBootUtil {
         } catch (IOException e) {
             e.printStackTrace();
             return null;
+        }catch (Exception e) {
+            e.printStackTrace();
+            return null;
         }
         return FILE_URL;
     }
@@ -145,7 +154,7 @@ public class OssBootUtil {
     */
     public static String getOriginalUrl(String url) {
         String originalDomain = "https://" + bucketName + "." + endPoint;
-        if(url.indexOf(staticDomain)!=-1){
+        if(oConvertUtils.isNotEmpty(staticDomain) && url.indexOf(staticDomain)!=-1){
             url = url.replace(staticDomain,originalDomain);
         }
         return url;
@@ -249,6 +258,9 @@ public class OssBootUtil {
                 newBucket = bucket;
             }
             initOSS(endPoint, accessKeyId, accessKeySecret);
+            //update-begin---author:liusq  Date:20220120  for：替换objectName前缀，防止key不一致导致获取不到文件----
+            objectName = OssBootUtil.replacePrefix(objectName,bucket);
+            //update-end---author:liusq  Date:20220120  for：替换objectName前缀，防止key不一致导致获取不到文件----
             OSSObject ossObject = ossClient.getObject(newBucket,objectName);
             inputStream = new BufferedInputStream(ossObject.getObjectContent());
         }catch (Exception e){
@@ -257,14 +269,14 @@ public class OssBootUtil {
         return inputStream;
     }
 
-    /**
-     * 获取文件流
-     * @param objectName
-     * @return
-     */
-    public static InputStream getOssFile(String objectName){
-        return getOssFile(objectName,null);
-    }
+    ///**
+    // * 获取文件流
+    // * @param objectName
+    // * @return
+    // */
+    //public static InputStream getOssFile(String objectName){
+    //    return getOssFile(objectName,null);
+    //}
 
     /**
      * 获取文件外链
@@ -276,6 +288,9 @@ public class OssBootUtil {
     public static String getObjectURL(String bucketName, String objectName, Date expires) {
         initOSS(endPoint, accessKeyId, accessKeySecret);
         try{
+            //update-begin---author:liusq  Date:20220120  for：替换objectName前缀，防止key不一致导致获取不到文件----
+            objectName = OssBootUtil.replacePrefix(objectName,bucketName);
+            //update-end---author:liusq  Date:20220120  for：替换objectName前缀，防止key不一致导致获取不到文件----
             if(ossClient.doesObjectExist(bucketName,objectName)){
                 URL url = ossClient.generatePresignedUrl(bucketName,objectName,expires);
                 return URLDecoder.decode(url.toString(),"UTF-8");
@@ -325,5 +340,27 @@ public class OssBootUtil {
         return FILE_URL;
     }
 
-
+    /**
+     * 替换前缀，防止key不一致导致获取不到文件
+     * @param objectName 文件上传路径 key
+     * @param customBucket 自定义桶
+     * @date 2022-01-20
+     * @author lsq
+     * @return
+     */
+    private static String replacePrefix(String objectName,String customBucket){
+        log.info("------replacePrefix---替换前---objectName:{}",objectName);
+        if(oConvertUtils.isNotEmpty(staticDomain)){
+            objectName= objectName.replace(staticDomain+"/","");
+        }else{
+            String newBucket = bucketName;
+            if(oConvertUtils.isNotEmpty(customBucket)){
+                newBucket = customBucket;
+            }
+            String path ="https://" + newBucket + "." + endPoint + "/";
+            objectName = objectName.replace(path,"");
+        }
+        log.info("------replacePrefix---替换后---objectName:{}",objectName);
+        return objectName;
+    }
 }

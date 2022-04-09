@@ -1,54 +1,56 @@
 package org.jeecg.modules.system.controller;
 
-import java.io.IOException;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
+import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jeecg.dingtalk.api.core.response.Response;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.apache.shiro.SecurityUtils;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.constant.CommonConstant;
 import org.jeecg.common.constant.CommonSendStatus;
 import org.jeecg.common.constant.WebsocketConst;
+import org.jeecg.common.system.api.ISysBaseAPI;
 import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.common.system.util.JwtUtil;
 import org.jeecg.common.system.vo.LoginUser;
+import org.jeecg.common.util.RedisUtil;
+import org.jeecg.common.util.TokenUtils;
 import org.jeecg.common.util.oConvertUtils;
 import org.jeecg.modules.message.websocket.WebSocket;
 import org.jeecg.modules.system.entity.SysAnnouncement;
 import org.jeecg.modules.system.entity.SysAnnouncementSend;
 import org.jeecg.modules.system.service.ISysAnnouncementSendService;
 import org.jeecg.modules.system.service.ISysAnnouncementService;
-
+import org.jeecg.modules.system.service.impl.ThirdAppDingtalkServiceImpl;
+import org.jeecg.modules.system.service.impl.ThirdAppWechatEnterpriseServiceImpl;
+import org.jeecg.modules.system.util.XSSUtils;
 import org.jeecgframework.poi.excel.ExcelImportUtil;
 import org.jeecgframework.poi.excel.def.NormalExcelConstants;
 import org.jeecgframework.poi.excel.entity.ExportParams;
 import org.jeecgframework.poi.excel.entity.ImportParams;
 import org.jeecgframework.poi.excel.view.JeecgEntityExcelView;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 import org.springframework.web.servlet.ModelAndView;
 
-import com.alibaba.fastjson.JSONObject;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import lombok.extern.slf4j.Slf4j;
+import static org.jeecg.common.constant.CommonConstant.ANNOUNCEMENT_SEND_STATUS_1;
 
 /**
  * @Title: Controller
@@ -67,6 +69,15 @@ public class SysAnnouncementController {
 	private ISysAnnouncementSendService sysAnnouncementSendService;
 	@Resource
     private WebSocket webSocket;
+	@Autowired
+	ThirdAppWechatEnterpriseServiceImpl wechatEnterpriseService;
+	@Autowired
+	ThirdAppDingtalkServiceImpl dingtalkService;
+	@Autowired
+	private ISysBaseAPI sysBaseAPI;
+	@Autowired
+	@Lazy
+	private RedisUtil redisUtil;
 
 	/**
 	  * 分页列表查询
@@ -83,18 +94,21 @@ public class SysAnnouncementController {
 									  HttpServletRequest req) {
 		Result<IPage<SysAnnouncement>> result = new Result<IPage<SysAnnouncement>>();
 		sysAnnouncement.setDelFlag(CommonConstant.DEL_FLAG_0.toString());
-		QueryWrapper<SysAnnouncement> queryWrapper = new QueryWrapper<SysAnnouncement>(sysAnnouncement);
+		QueryWrapper<SysAnnouncement> queryWrapper = QueryGenerator.initQueryWrapper(sysAnnouncement, req.getParameterMap());
 		Page<SysAnnouncement> page = new Page<SysAnnouncement>(pageNo,pageSize);
+
+		//update-begin-author:lvdandan date:20211229 for: sqlserver mssql-jdbc 8.2.2.jre8版本下系统公告列表查询报错 查询SQL中生成了两个create_time DESC；故注释此段代码
 		//排序逻辑 处理
-		String column = req.getParameter("column");
-		String order = req.getParameter("order");
-		if(oConvertUtils.isNotEmpty(column) && oConvertUtils.isNotEmpty(order)) {
-			if("asc".equals(order)) {
-				queryWrapper.orderByAsc(oConvertUtils.camelToUnderline(column));
-			}else {
-				queryWrapper.orderByDesc(oConvertUtils.camelToUnderline(column));
-			}
-		}
+//		String column = req.getParameter("column");
+//		String order = req.getParameter("order");
+//		if(oConvertUtils.isNotEmpty(column) && oConvertUtils.isNotEmpty(order)) {
+//			if("asc".equals(order)) {
+//				queryWrapper.orderByAsc(oConvertUtils.camelToUnderline(column));
+//			}else {
+//				queryWrapper.orderByDesc(oConvertUtils.camelToUnderline(column));
+//			}
+//		}
+		//update-end-author:lvdandan date:20211229 for: sqlserver mssql-jdbc 8.2.2.jre8版本下系统公告列表查询报错 查询SQL中生成了两个create_time DESC；故注释此段代码
 		IPage<SysAnnouncement> pageList = sysAnnouncementService.page(page, queryWrapper);
 		result.setSuccess(true);
 		result.setResult(pageList);
@@ -110,6 +124,10 @@ public class SysAnnouncementController {
 	public Result<SysAnnouncement> add(@RequestBody SysAnnouncement sysAnnouncement) {
 		Result<SysAnnouncement> result = new Result<SysAnnouncement>();
 		try {
+			// update-begin-author:liusq date:20210804 for:标题处理xss攻击的问题
+			String title = XSSUtils.striptXSS(sysAnnouncement.getTitile());
+			sysAnnouncement.setTitile(title);
+			// update-end-author:liusq date:20210804 for:标题处理xss攻击的问题
 			sysAnnouncement.setDelFlag(CommonConstant.DEL_FLAG_0.toString());
 			sysAnnouncement.setSendStatus(CommonSendStatus.UNPUBLISHED_STATUS_0);//未发布
 			sysAnnouncementService.saveAnnouncement(sysAnnouncement);
@@ -126,13 +144,17 @@ public class SysAnnouncementController {
 	 * @param sysAnnouncement
 	 * @return
 	 */
-	@RequestMapping(value = "/edit", method = RequestMethod.PUT)
+	@RequestMapping(value = "/edit", method = {RequestMethod.PUT,RequestMethod.POST})
 	public Result<SysAnnouncement> eidt(@RequestBody SysAnnouncement sysAnnouncement) {
 		Result<SysAnnouncement> result = new Result<SysAnnouncement>();
 		SysAnnouncement sysAnnouncementEntity = sysAnnouncementService.getById(sysAnnouncement.getId());
 		if(sysAnnouncementEntity==null) {
 			result.error500("未找到对应实体");
 		}else {
+			// update-begin-author:liusq date:20210804 for:标题处理xss攻击的问题
+			String title = XSSUtils.striptXSS(sysAnnouncement.getTitile());
+			sysAnnouncement.setTitile(title);
+			// update-end-author:liusq date:20210804 for:标题处理xss攻击的问题
 			boolean ok = sysAnnouncementService.upDateAnnouncement(sysAnnouncement);
 			//TODO 返回false说明什么？
 			if(ok) {
@@ -242,6 +264,19 @@ public class SysAnnouncementController {
 					obj.put(WebsocketConst.MSG_TXT, sysAnnouncement.getTitile());
 			    	webSocket.sendMessage(userIds, obj.toJSONString());
 				}
+				try {
+					// 同步企业微信、钉钉的消息通知
+					Response<String> dtResponse = dingtalkService.sendActionCardMessage(sysAnnouncement, true);
+					wechatEnterpriseService.sendTextCardMessage(sysAnnouncement, true);
+
+					if (dtResponse != null && dtResponse.isSuccess()) {
+						String taskId = dtResponse.getResult();
+						sysAnnouncement.setDtTaskId(taskId);
+						sysAnnouncementService.updateById(sysAnnouncement);
+					}
+				} catch (Exception e) {
+					log.error("同步发送第三方APP消息失败：", e);
+				}
 			}
 		}
 
@@ -265,6 +300,13 @@ public class SysAnnouncementController {
 			boolean ok = sysAnnouncementService.updateById(sysAnnouncement);
 			if(ok) {
 				result.success("该系统通知撤销成功");
+				if (oConvertUtils.isNotEmpty(sysAnnouncement.getDtTaskId())) {
+					try {
+						dingtalkService.recallMessage(sysAnnouncement.getDtTaskId());
+					} catch (Exception e) {
+						log.error("第三方APP撤回消息失败：", e);
+					}
+				}
 			}
 		}
 
@@ -276,7 +318,7 @@ public class SysAnnouncementController {
 	 * @return
 	 */
 	@RequestMapping(value = "/listByUser", method = RequestMethod.GET)
-	public Result<Map<String,Object>> listByUser() {
+	public Result<Map<String, Object>> listByUser(@RequestParam(required = false, defaultValue = "5") Integer pageSize) {
 		Result<Map<String,Object>> result = new Result<Map<String,Object>>();
 		LoginUser sysUser = (LoginUser)SecurityUtils.getSubject().getPrincipal();
 		String userId = sysUser.getId();
@@ -299,19 +341,21 @@ public class SysAnnouncementController {
 				query.eq(SysAnnouncementSend::getUserId,userId);
 				SysAnnouncementSend one = sysAnnouncementSendService.getOne(query);
 				if(null==one){
-				SysAnnouncementSend announcementSend = new SysAnnouncementSend();
-				announcementSend.setAnntId(announcements.get(i).getId());
-				announcementSend.setUserId(userId);
-				announcementSend.setReadFlag(CommonConstant.NO_READ_FLAG);
-				sysAnnouncementSendService.save(announcementSend);
+					log.info("listByUser接口新增了SysAnnouncementSend：pageSize{}："+pageSize);
+					SysAnnouncementSend announcementSend = new SysAnnouncementSend();
+					announcementSend.setAnntId(announcements.get(i).getId());
+					announcementSend.setUserId(userId);
+					announcementSend.setReadFlag(CommonConstant.NO_READ_FLAG);
+					sysAnnouncementSendService.save(announcementSend);
+					log.info("announcementSend.toString()",announcementSend.toString());
 				}
 				//update-end--Author:wangshuai  Date:20200803  for： 通知公告消息重复LOWCOD-759------------
 			}
 		}
 		// 2.查询用户未读的系统消息
-		Page<SysAnnouncement> anntMsgList = new Page<SysAnnouncement>(0,5);
+		Page<SysAnnouncement> anntMsgList = new Page<SysAnnouncement>(0, pageSize);
 		anntMsgList = sysAnnouncementService.querySysCementPageByUserId(anntMsgList,userId,"1");//通知公告消息
-		Page<SysAnnouncement> sysMsgList = new Page<SysAnnouncement>(0,5);
+		Page<SysAnnouncement> sysMsgList = new Page<SysAnnouncement>(0, pageSize);
 		sysMsgList = sysAnnouncementService.querySysCementPageByUserId(sysMsgList,userId,"2");//系统消息
 		Map<String,Object> sysMsgMap = new HashMap<String, Object>();
 		sysMsgMap.put("sysMsgList", sysMsgList.getRecords());
@@ -335,7 +379,7 @@ public class SysAnnouncementController {
         LambdaQueryWrapper<SysAnnouncement> queryWrapper = new LambdaQueryWrapper<SysAnnouncement>(sysAnnouncement);
         //Step.2 AutoPoi 导出Excel
         ModelAndView mv = new ModelAndView(new JeecgEntityExcelView());
-		queryWrapper.eq(SysAnnouncement::getDelFlag,CommonConstant.DEL_FLAG_0);
+		queryWrapper.eq(SysAnnouncement::getDelFlag,CommonConstant.DEL_FLAG_0.toString());
         List<SysAnnouncement> pageList = sysAnnouncementService.list(queryWrapper);
         //导出文件名称
         mv.addObject(NormalExcelConstants.FILE_NAME, "系统通告列表");
@@ -423,4 +467,33 @@ public class SysAnnouncementController {
 		}
 		return result;
 	}
+
+	/**
+	 * 通告查看详情页面（用于第三方APP）
+	 * @param modelAndView
+	 * @param id
+	 * @return
+	 */
+    @GetMapping("/show/{id}")
+    public ModelAndView showContent(ModelAndView modelAndView, @PathVariable("id") String id, HttpServletRequest request) {
+        SysAnnouncement announcement = sysAnnouncementService.getById(id);
+        if (announcement != null) {
+            boolean tokenOK = false;
+            try {
+                // 验证Token有效性
+                tokenOK = TokenUtils.verifyToken(request, sysBaseAPI, redisUtil);
+            } catch (Exception ignored) {
+            }
+            // 判断是否传递了Token，并且Token有效，如果传了就不做查看限制，直接返回
+            // 如果Token无效，就做查看限制：只能查看已发布的
+            if (tokenOK || ANNOUNCEMENT_SEND_STATUS_1.equals(announcement.getSendStatus())) {
+                modelAndView.addObject("data", announcement);
+                modelAndView.setViewName("announcement/showContent");
+                return modelAndView;
+            }
+        }
+        modelAndView.setStatus(HttpStatus.NOT_FOUND);
+        return modelAndView;
+    }
+
 }

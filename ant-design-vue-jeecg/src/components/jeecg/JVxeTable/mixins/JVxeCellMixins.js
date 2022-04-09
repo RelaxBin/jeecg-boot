@@ -36,6 +36,9 @@ export default {
     rows() {
       return this.params.data
     },
+    fullDataLength() {
+      return this.params.$table.tableFullData.length
+    },
     rowIndex() {
       return this.params.rowIndex
     },
@@ -70,6 +73,16 @@ export default {
         props['disabled'] = true
       }
 
+      // update-begin-author:taoyan date:20211011 for: online表单，附表用户选择器{"multiSelect":false}不生效，单表可以生效 #3036
+      let jsonStr = col['fieldExtendJson']
+      if(jsonStr){
+        let fieldExtendJson = JSON.parse(jsonStr)
+        if(fieldExtendJson && fieldExtendJson['multiSelect']==false){
+          props['multi'] = false
+        }
+      }
+      // update-end-author:taoyan date:20211011 for: online表单，附表用户选择器{"multiSelect":false}不生效，单表可以生效 #3036
+
       return props
     },
   },
@@ -99,7 +112,13 @@ export default {
 
         // 判断是否启用翻译
         if (this.renderType === JVXERenderType.spaner && this.enhanced.translate.enabled) {
-          this.innerValue = this.enhanced.translate.handler.call(this, value)
+          let res = this.enhanced.translate.handler.call(this, value)
+          // 异步翻译，目前仅【多级联动】使用
+          if (res instanceof Promise) {
+            res.then(value => this.innerValue = value)
+          } else {
+            this.innerValue = res
+          }
         }
       },
     },
@@ -291,6 +310,10 @@ export function vModel(value, row, property) {
 
 /** 模拟触发事件 */
 export function dispatchEvent({cell, $event}, className, handler) {
+  // alwaysEdit 下不模拟触发事件，否者会导致触发两次
+  if (this && this.alwaysEdit) {
+    return
+  }
   window.setTimeout(() => {
     let element = cell.getElementsByClassName(className)
     if (element && element.length > 0) {
@@ -298,9 +321,7 @@ export function dispatchEvent({cell, $event}, className, handler) {
         handler(element[0])
       } else {
         // 模拟触发点击事件
-        console.log($event)
         if($event){
-          console.log("$event===>",$event)
           element[0].dispatchEvent($event)
         }
       }

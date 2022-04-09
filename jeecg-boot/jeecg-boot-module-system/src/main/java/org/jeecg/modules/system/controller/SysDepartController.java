@@ -1,12 +1,10 @@
 package org.jeecg.modules.system.controller;
 
-import java.io.IOException;
-import java.util.*;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.shiro.SecurityUtils;
 import org.apache.shiro.authz.annotation.RequiresRoles;
 import org.jeecg.common.api.vo.Result;
@@ -23,28 +21,25 @@ import org.jeecg.modules.system.entity.SysUser;
 import org.jeecg.modules.system.model.DepartIdModel;
 import org.jeecg.modules.system.model.SysDepartTreeModel;
 import org.jeecg.modules.system.service.ISysDepartService;
-import org.jeecg.modules.system.service.ISysPositionService;
 import org.jeecg.modules.system.service.ISysUserDepartService;
 import org.jeecg.modules.system.service.ISysUserService;
-import org.jeecg.modules.system.util.FindsDepartsChildrenUtil;
 import org.jeecgframework.poi.excel.ExcelImportUtil;
 import org.jeecgframework.poi.excel.def.NormalExcelConstants;
 import org.jeecgframework.poi.excel.entity.ExportParams;
 import org.jeecgframework.poi.excel.entity.ImportParams;
 import org.jeecgframework.poi.excel.view.JeecgEntityExcelView;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
 import org.springframework.web.servlet.ModelAndView;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-
-import lombok.extern.slf4j.Slf4j;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.*;
 
 /**
  * <p>
@@ -77,8 +72,13 @@ public class SysDepartController {
 		LoginUser user = (LoginUser) SecurityUtils.getSubject().getPrincipal();
 		try {
 			if(oConvertUtils.isNotEmpty(user.getUserIdentity()) && user.getUserIdentity().equals( CommonConstant.USER_IDENTITY_2 )){
-				List<SysDepartTreeModel> list = sysDepartService.queryMyDeptTreeList(user.getDepartIds());
-				result.setResult(list);
+				//update-begin--Author:liusq  Date:20210624  for:部门查询ids为空后的前端显示问题 issues/I3UD06
+				String departIds = user.getDepartIds();
+				if(StringUtils.isNotBlank(departIds)){
+					List<SysDepartTreeModel> list = sysDepartService.queryMyDeptTreeList(departIds);
+					result.setResult(list);
+				}
+				//update-end--Author:liusq  Date:20210624  for:部门查询ids为空后的前端显示问题 issues/I3UD06
 				result.setMessage(CommonConstant.USER_IDENTITY_2.toString());
 				result.setSuccess(true);
 			}else{
@@ -97,7 +97,7 @@ public class SysDepartController {
 	 * @return
 	 */
 	@RequestMapping(value = "/queryTreeList", method = RequestMethod.GET)
-	public Result<List<SysDepartTreeModel>> queryTreeList() {
+	public Result<List<SysDepartTreeModel>> queryTreeList(@RequestParam(name = "ids", required = false) String ids) {
 		Result<List<SysDepartTreeModel>> result = new Result<>();
 		try {
 			// 从内存中读取
@@ -105,8 +105,13 @@ public class SysDepartController {
 //			if (CollectionUtils.isEmpty(list)) {
 //				list = sysDepartService.queryTreeList();
 //			}
-			List<SysDepartTreeModel> list = sysDepartService.queryTreeList();
-			result.setResult(list);
+			if(oConvertUtils.isNotEmpty(ids)){
+				List<SysDepartTreeModel> departList = sysDepartService.queryTreeList(ids);
+				result.setResult(departList);
+			}else{
+				List<SysDepartTreeModel> list = sysDepartService.queryTreeList();
+				result.setResult(list);
+			}
 			result.setSuccess(true);
 		} catch (Exception e) {
 			log.error(e.getMessage(),e);
@@ -116,20 +121,48 @@ public class SysDepartController {
 
 	/**
 	 * 异步查询部门list
-	 *
+	 * @param parentId 父节点 异步加载时传递
+	 * @param ids 前端回显是传递
 	 * @return
 	 */
 	@RequestMapping(value = "/queryDepartTreeSync", method = RequestMethod.GET)
-	public Result<List<SysDepartTreeModel>> queryDepartTreeSync(@RequestParam(name = "pid", required = false) String parentId) {
+	public Result<List<SysDepartTreeModel>> queryDepartTreeSync(@RequestParam(name = "pid", required = false) String parentId,@RequestParam(name = "ids", required = false) String ids) {
 		Result<List<SysDepartTreeModel>> result = new Result<>();
 		try {
-			List<SysDepartTreeModel> list = sysDepartService.queryTreeListByPid(parentId);
+			List<SysDepartTreeModel> list = sysDepartService.queryTreeListByPid(parentId,ids);
 			result.setResult(list);
 			result.setSuccess(true);
 		} catch (Exception e) {
 			log.error(e.getMessage(),e);
 		}
 		return result;
+	}
+
+	/**
+	 * 获取某个部门的所有父级部门的ID
+	 *
+	 * @param departId 根据departId查
+	 * @param orgCode  根据orgCode查，departId和orgCode必须有一个不为空
+	 */
+	@GetMapping("/queryAllParentId")
+	public Result queryParentIds(
+			@RequestParam(name = "departId", required = false) String departId,
+			@RequestParam(name = "orgCode", required = false) String orgCode
+	) {
+		try {
+			JSONObject data;
+			if (oConvertUtils.isNotEmpty(departId)) {
+				data = sysDepartService.queryAllParentIdByDepartId(departId);
+			} else if (oConvertUtils.isNotEmpty(orgCode)) {
+				data = sysDepartService.queryAllParentIdByOrgCode(orgCode);
+			} else {
+				return Result.error("departId 和 orgCode 不能都为空！");
+			}
+			return Result.OK(data);
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			return Result.error(e.getMessage());
+		}
 	}
 
 	/**
@@ -165,7 +198,7 @@ public class SysDepartController {
 	 * @return
 	 */
 	//@RequiresRoles({"admin"})
-	@RequestMapping(value = "/edit", method = RequestMethod.PUT)
+	@RequestMapping(value = "/edit", method = {RequestMethod.PUT,RequestMethod.POST})
 	@CacheEvict(value= {CacheConstant.SYS_DEPARTS_CACHE,CacheConstant.SYS_DEPART_IDS_CACHE}, allEntries=true)
 	public Result<SysDepart> edit(@RequestBody SysDepart sysDepart, HttpServletRequest request) {
 		String username = JwtUtil.getUserNameByToken(request);
@@ -289,7 +322,7 @@ public class SysDepartController {
 		if(oConvertUtils.isNotEmpty(user.getUserIdentity()) && user.getUserIdentity().equals( CommonConstant.USER_IDENTITY_2 )){
 			departIds = user.getDepartIds();
 		}
-		List<SysDepartTreeModel> treeList = this.sysDepartService.searhBy(keyWord,myDeptSearch,departIds);
+		List<SysDepartTreeModel> treeList = this.sysDepartService.searchByKeyWord(keyWord,myDeptSearch,departIds);
 		if (treeList == null || treeList.size() == 0) {
 			result.setSuccess(false);
 			result.setMessage("未查询匹配数据！");
@@ -330,6 +363,8 @@ public class SysDepartController {
 
     /**
      * 通过excel导入数据
+	 * 部门导入方案1: 通过机构编码来计算出部门的父级ID,维护上下级关系;
+	 * 部门导入方案2: 你也可以改造下程序,机构编码直接导入,先不设置父ID;全部导入后,写一个sql,补下父ID;
      *
      * @param request
      * @param response
@@ -385,6 +420,11 @@ public class SysDepartController {
 					sysDepart.setOrgType(sysDepart.getOrgCode().length()/codeLength+"");
                     //update-end---author:liusq   Date:20210223  for：批量导入部门以后，不能追加下一级部门 #2245------------
 					sysDepart.setDelFlag(CommonConstant.DEL_FLAG_0.toString());
+                    //update-begin---author:wangshuai ---date:20220105  for：[JTC-363]部门导入 机构类别没有时导入失败，赋默认值------------
+					if(oConvertUtils.isEmpty(sysDepart.getOrgCategory())){
+					    sysDepart.setOrgCategory("1");
+                    }
+                    //update-end---author:wangshuai ---date:20220105  for：[JTC-363]部门导入 机构类别没有时导入失败，赋默认值------------
 					ImportExcelUtil.importDateSaveOne(sysDepart, ISysDepartService.class, errorMessageList, num, CommonConstant.SQL_INDEX_UNIQ_DEPART_ORG_CODE);
 					num++;
                 }

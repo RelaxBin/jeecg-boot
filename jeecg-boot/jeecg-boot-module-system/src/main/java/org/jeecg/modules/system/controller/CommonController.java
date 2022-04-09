@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.constant.CommonConstant;
+import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.common.system.api.ISysBaseAPI;
 import org.jeecg.common.util.CommonUtils;
 import org.jeecg.common.util.RestUtil;
@@ -73,6 +74,12 @@ public class CommonController {
         Result<?> result = new Result<>();
         String savePath = "";
         String bizPath = request.getParameter("biz");
+
+        //LOWCOD-2580 sys/common/upload接口存在任意文件上传漏洞
+        if (oConvertUtils.isNotEmpty(bizPath) && (bizPath.contains("../") || bizPath.contains("..\\"))) {
+            throw new JeecgBootException("上传目录bizPath，格式非法！");
+        }
+
         MultipartHttpServletRequest multipartRequest = (MultipartHttpServletRequest) request;
         MultipartFile file = multipartRequest.getFile("file");// 获取上传文件对象
         if(oConvertUtils.isEmpty(bizPath)){
@@ -133,7 +140,7 @@ public class CommonController {
             String orgName = mf.getOriginalFilename();// 获取文件名
             orgName = CommonUtils.getFileName(orgName);
             if(orgName.indexOf(".")!=-1){
-                fileName = orgName.substring(0, orgName.lastIndexOf(".")) + "_" + System.currentTimeMillis() + orgName.substring(orgName.indexOf("."));
+                fileName = orgName.substring(0, orgName.lastIndexOf(".")) + "_" + System.currentTimeMillis() + orgName.substring(orgName.lastIndexOf("."));
             }else{
                 fileName = orgName+ "_" + System.currentTimeMillis();
             }
@@ -211,7 +218,7 @@ public class CommonController {
         InputStream inputStream = null;
         OutputStream outputStream = null;
         try {
-            imgPath = imgPath.replace("..", "");
+            imgPath = imgPath.replace("..", "").replace("../","");
             if (imgPath.endsWith(",")) {
                 imgPath = imgPath.substring(0, imgPath.length() - 1);
             }

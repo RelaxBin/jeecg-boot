@@ -10,6 +10,7 @@
       ref="jPopupOnlReport"
       :code="code"
       :multi="multi"
+      :sorter="sorter"
       :groupId="uniqGroupId"
       :param="param"
       @ok="callBack"
@@ -46,6 +47,11 @@
         type: String,
         default: '',
         required: false
+      },
+      /** 排序列，指定要排序的列，使用方式：列名=desc|asc */
+      sorter: {
+        type: String,
+        default: ''
       },
       width: {
         type: Number,
@@ -137,6 +143,10 @@
         }
       },
       handleEmpty() {
+        // 禁用时，不允许清空内容
+        if (this.disabled) {
+          return
+        }
         this.showText = ''
         let destFieldsArr = this.destFields.split(',')
         if (destFieldsArr.length === 0) {
@@ -167,9 +177,11 @@
             let tempDestArr = []
             for(let rw of rows){
               let val = rw[orgFieldsArr[i]]
-              if(!val){
+              // update--begin--autor:liusq-----date:20210713------for：处理val等于0的情况issues/I3ZL4T------
+              if(typeof val=='undefined'|| val==null || val.toString()==""){
                 val = ""
               }
+              // update--end--autor:liusq-----date:20210713------for：处理val等于0的情况issues/I3ZL4T------
               tempDestArr.push(val)
             }
             res[destFieldsArr[i]] = tempDestArr.join(",")

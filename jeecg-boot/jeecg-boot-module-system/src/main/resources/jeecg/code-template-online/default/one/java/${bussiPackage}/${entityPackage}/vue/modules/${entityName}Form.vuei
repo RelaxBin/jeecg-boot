@@ -44,6 +44,7 @@
                 org-fields="${po.dictField}"
                 dest-fields="${Format.underlineToHump(po.dictText)}"
                 code="${po.dictTable}"
+                :multi="${po.extendParams.popupMulti?c}"
                 @input="popupCallback"
                 <#if po.readonly=='Y'>disabled</#if>/>
     <#elseif po.classType =='sel_depart'>
@@ -107,8 +108,8 @@
 </#if>
 </#list>
       <#if bpm_flag>
-          <a-col v-if="showFlowSubmitButton" :span="24" style="text-align: center">
-            <a-button @click="submitForm">提 交</a-button>
+          <a-col v-if="showFlowSubmitButton" :span="24" style="width: 100%;text-align: center;">
+            <a-button icon="check" style="width: 126px" type="primary" @click="submitForm">提 交</a-button>
           </a-col>
      </#if>
         </a-row>
